@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -79,8 +80,7 @@ public class ElectionTask implements Runnable{
         state.setVotedFor(state.getNodeId());
         for (Future<Raft.RequestVoteReply> future : list) {
             try {
-                Raft.RequestVoteReply r = future.get();
-                System.out.println("request vote request" + r);
+                Raft.RequestVoteReply r = future.get(100, TimeUnit.MILLISECONDS);
                 if (r == null) {
                     //fail to get Reply
                     continue;
@@ -109,11 +109,8 @@ public class ElectionTask implements Runnable{
             System.out.println(state.getNodeId()+"become leader");
             state.setRole(Raft.Role.Leader);
             state.setLeaderId(state.getNodeId());
-            state.setLeaderId(state.getNodeId());
             raftNode.leaderInit();
 //            raftNode.leaderInit();
-        }else{
-            state.setVotedFor(Variables.VOTE_FOR_NOONE);
         }
     }
 }

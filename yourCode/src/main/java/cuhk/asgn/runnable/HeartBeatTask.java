@@ -7,6 +7,7 @@ import raft.Raft;
 import raft.RaftNodeGrpc;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Future;
@@ -22,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class HeartBeatTask implements Runnable {
     ThreadPoolExecutor threadPool;
     State state;
+    HashMap<Integer, Raft.AppendEntriesArgs> hashMap;
 
     public HeartBeatTask(State state, ThreadPoolExecutor threadPool) {
         this.state = state;
@@ -41,13 +43,15 @@ public class HeartBeatTask implements Runnable {
                 continue;
             }
             threadPool.execute(new Runnable() {
+                final Raft.AppendEntriesArgs appendEntriesArgs = Raft.AppendEntriesArgs.newBuilder()
+                        .setPrevLogIndex(state.getCommitIndex().get())
+                        .setLeaderId(state.getNodeId())
+                        .setFrom(state.getNodeId())
+                        .setTo(nodeId)
+                        .setTerm(state.getCurrentTerm().get())
+                        .build();
                 @Override
                 public void run() {
-                    Raft.AppendEntriesArgs appendEntriesArgs = Raft.AppendEntriesArgs.newBuilder()
-                            .setPrevLogIndex(state.getCommitIndex().get())
-                            .setLeaderId(state.getNodeId())
-                            .setTerm(state.getCurrentTerm().get())
-                            .build();
                     try{
                         Raft.AppendEntriesReply r = stub.appendEntries(appendEntriesArgs);
                         if(r.getTerm() > state.getCurrentTerm().get()){
@@ -60,7 +64,6 @@ public class HeartBeatTask implements Runnable {
                     }catch (Exception e){
                         System.out.println("client"+nodeId+"heartBeat no reply");
                     }
-
                 }
             });
         }

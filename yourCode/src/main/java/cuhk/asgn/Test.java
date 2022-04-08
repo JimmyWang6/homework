@@ -46,18 +46,5 @@ public class Test {
         list.add(node4);
         list.add(node5);
         list.add(node2);
-        for(int i=0;i<4;i++){
-            Thread.sleep(10000);
-            RaftRunner.RaftNode raftNode = null;
-            for(int j=0;j<list.size();j++){
-                RaftRunner.RaftNode cur = list.get(j);
-                if(cur.state.getRole().equals(Raft.Role.Leader)){
-                    raftNode = cur;
-                    break;
-                }
-            }
-            raftNode.taskHolder.threadPoolExecutor.shutdown();
-            raftNode.server.shutdown();
-        }
     }
 }

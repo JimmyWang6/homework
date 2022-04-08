@@ -1,6 +1,9 @@
 package cuhk.asgn;
+
+import cuhk.asgn.runnable.AppendEntryTask;
 import cuhk.asgn.runnable.ElectionTask;
 import cuhk.asgn.runnable.HeartBeatTask;
+import cuhk.asgn.runnable.LeaderTask;
 import io.grpc.Channel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.Server;
@@ -14,6 +17,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import raft.Raft;
 import raft.Raft.AppendEntriesArgs;
@@ -41,7 +45,6 @@ public class RaftRunner {
         int nodeID = Integer.parseInt(args[2]);
         int heartBeatInterval = Integer.parseInt(args[3]);
         int electionTimeout = Integer.parseInt(args[4]);
-
         String[] portStrings = ports.split(",");
 
         // A map where
@@ -64,13 +67,6 @@ public class RaftRunner {
                 System.err.println("*** server shut down");
             }
         });
-        Thread.sleep(10000);
-        Raft.ProposeArgs proposeArgs = Raft.ProposeArgs.newBuilder()
-                .setOp(Raft.Operation.Put)
-                .setKey("1")
-                .setV(0)
-                .build();
-        node.state.hostConnectionMap.get(9999).propose(proposeArgs);
         server.awaitTermination();
     }
 
@@ -89,16 +85,12 @@ public class RaftRunner {
     public static RaftNode NewRaftNode(int myPort, Map<Integer, Integer> nodeidPortMap, int nodeId, int heartBeatInterval,
                                        int electionTimeout) throws IOException {
         //TODO: implement this !
-        int numNodes = nodeidPortMap.size();
 
 //        nodeidPortMap.remove(nodeId);
-        Random random = new Random();
-        Variables.electionTimeout  = random.nextInt(300)*10;
+        Variables.electionTimeout = electionTimeout;
         Variables.heartBeatInterval = heartBeatInterval;
         Map<Integer, RaftNodeBlockingStub> hostConnectionMap = new HashMap<>();
-
         RaftNode raftNode = new RaftNode();
-
         Server server = ServerBuilder.forPort(myPort).addService(raftNode).build();
         raftNode.server = server;
         raftNode.state.nodeId = nodeId;
@@ -110,15 +102,14 @@ public class RaftRunner {
                     .usePlaintext() // disable TLS
                     .build();
             hostConnectionMap.put(
-                    id,
+                    entry.getKey(),
                     RaftNodeGrpc.newBlockingStub(channel)
             );
         }
         raftNode.state.hostConnectionMap = hostConnectionMap;
-        System.out.println(hostConnectionMap.size()+"size");
         System.out.println("Successfully connect all nodes");
         //TODO: kick off leader election here !
-        raftNode.taskHolder = new TaskHolder(raftNode.state,raftNode);
+        raftNode.taskHolder = new TaskHolder(raftNode.state, raftNode);
         return raftNode;
     }
 
@@ -129,23 +120,24 @@ public class RaftRunner {
         public volatile State state;
         public TaskHolder taskHolder;
         ConcurrentHashMap<String, Integer> concurrentHashMap = new ConcurrentHashMap();
+
         public RaftNode() {
             this.state = new State();
         }
-        public void leaderInit(){
-            taskHolder.addHeartBeat();
+
+        public void leaderInit() {
             taskHolder.stopElection();
+            taskHolder.addHeartBeat();
 //            int size = state.hostConnectionMap.size();
-//            state.nextIndex = new int[size];
-//            state.matchIndex = new int[size];
-//            for(Map.Entry<Integer,RaftNodeBlockingStub> entry:state.hostConnectionMap.entrySet()){
-//                int nodeId = entry.getKey();
-//                if(nodeId == state.getNodeId()){
-//                    continue;
-//                }
-//                RaftNodeBlockingStub stub = entry.getValue();
+//            state.nextIndex = new int[size-1];
+//            int curIndex = state.log.size()+1;
+//            for(int i=0;i<size;i++){
+//                state.nextIndex[i] = curIndex;
 //            }
+//            //
+//            HashMap<Integer,AppendEntriesArgs> map = taskHolder.threadPoolExecutor.sub;
         }
+
         // Desc:
         // Propose initializes proposing a new operation, and replies with the
         // result of committing this operation. Propose should not return until
@@ -161,7 +153,7 @@ public class RaftRunner {
         // reply: as specified in Desc
         @Override
         public void propose(ProposeArgs request, StreamObserver<ProposeReply> responseObserver) {
-            System.out.println("node:"+state.nodeId+"receive msg"+request);
+            System.out.println("node:" + state.nodeId + "receive msg" + request);
             ProposeReply reply = null;
             //if not leader,return wrong node
             if (!state.role.equals(Raft.Role.Leader)) {
@@ -181,7 +173,7 @@ public class RaftRunner {
                 case Put:
                     LogEntry logEntry = appendLocalEntry(request);
                     concurrentHashMap.put(key, value);
-                    waitUntilMajority(logEntry,request);
+                    waitUntilMajority(logEntry, request);
                     state.commitIndex.getAndIncrement();
                     reply = ProposeReply.newBuilder().setStatus(Raft.Status.OK).build();
                     break;
@@ -190,7 +182,7 @@ public class RaftRunner {
                         reply = ProposeReply.newBuilder().setStatus(Raft.Status.KeyNotFound).build();
                     } else {
                         logEntry = appendLocalEntry(request);
-                        waitUntilMajority(logEntry,request);
+                        waitUntilMajority(logEntry, request);
                         concurrentHashMap.remove(key);
                         state.commitIndex.getAndIncrement();
                     }
@@ -236,26 +228,27 @@ public class RaftRunner {
             // TODO: Implement this!
             RequestVoteReply requestVoteReply = null;
             boolean success = false;
-            if(state.getVotedFor()!=Variables.VOTE_FOR_NOONE){
-                //already votedif(request.getTerm()>)
-                System.out.println("already voted");
-            }else{
-                if(request.getTerm()>=state.getCurrentTerm().get()){
-                    state.setRole(Raft.Role.Follower);
-                    state.setVotedFor(request.getFrom());
+            if(becomeFollower(request.getTerm(),request.getFrom())){
+                success = true;
+            }else {
+                if(state.getVotedFor()==Variables.VOTE_FOR_NOONE){
                     success = true;
+                    state.setRole(Raft.Role.Follower);
+                    taskHolder.addElection();
                 }else{
                     success = false;
                 }
             }
-            if(success){
-                requestVoteReply  = RequestVoteReply.newBuilder().setVoteGranted(true)
+            if (success) {
+                requestVoteReply = RequestVoteReply.newBuilder().setVoteGranted(success)
                         .setTerm(state.getCurrentTerm().get())
                         .setFrom(state.nodeId)
                         .setTo(request.getFrom())
                         .build();
-            }else {
-                requestVoteReply  = RequestVoteReply.newBuilder().setVoteGranted(false)
+                state.setVotedFor(request.getFrom());
+                taskHolder.addElection();
+            } else {
+                requestVoteReply = RequestVoteReply.newBuilder().setVoteGranted(false)
                         .setTerm(state.getCurrentTerm().get())
                         .setFrom(state.nodeId)
                         .setTo(request.getFrom())
@@ -277,13 +270,16 @@ public class RaftRunner {
                                   StreamObserver<AppendEntriesReply> responseObserver) {
             // TODO: Implement this!
             System.out.println(state);
-            System.out.println("receive append entry term = "+request.getTerm());
-            becomeFollower(request.getTerm(),request.getLeaderId());
-            if(request.getEntriesList().size()==0){
-                AppendEntriesReply appendEntriesReply  = AppendEntriesReply.newBuilder()
+            System.out.println("append entry");
+            System.out.println("request==");
+            System.out.println(request.getEntriesList());
+            becomeFollower(request.getTerm(), request.getLeaderId());
+            if (request.getEntriesList() == null || request.getEntriesList().size() == 0) {
+                AppendEntriesReply appendEntriesReply = AppendEntriesReply.newBuilder()
                         .setSuccess(true)
                         .setTerm(state.currentTerm.get())
                         .setFrom(state.nodeId)
+                        .setMatchIndex(0)
                         .setTo(request.getFrom())
                         .build();
                 responseObserver.onNext(appendEntriesReply);
@@ -292,38 +288,38 @@ public class RaftRunner {
             }
             AppendEntriesReply appendEntriesReply = null;
             boolean success = true;
-            if(request.getTerm()<state.currentTerm.get()){
+            if (request.getTerm() < state.currentTerm.get()) {
                 success = false;
-            }else{
+            } else {
                 int preIndex = request.getPrevLogIndex();
-                if(preIndex > state.log.size()){
+                if (preIndex > state.log.size()) {
                     success = false;
-                }else{
+                } else {
                     LogEntry entry = state.log.get(preIndex);
                     int term = entry.getTerm();
-                    if(term!=request.getTerm()){
+                    if (term != request.getTerm()) {
                         success = false;
                         CopyOnWriteArrayList<LogEntry> list = state.getLog();
-                        for(int i=preIndex;i<list.size();i++){
+                        for (int i = preIndex; i < list.size(); i++) {
                             list.remove(i);
                         }
-                        for(Raft.LogEntry e:request.getEntriesList()){
+                        for (Raft.LogEntry e : request.getEntriesList()) {
                             list.add(e);
                         }
                         int size = list.size();
-                        if(request.getLeaderCommit()>state.commitIndex.get()){
-                            state.commitIndex.set(Math.min(request.getLeaderCommit(),size-1));
+                        if (request.getLeaderCommit() > state.commitIndex.get()) {
+                            state.commitIndex.set(Math.min(request.getLeaderCommit(), size - 1));
                         }
                     }
                 }
-                if(success){
+                if (success) {
                     appendEntriesReply = AppendEntriesReply.newBuilder()
                             .setSuccess(true)
                             .setTerm(state.currentTerm.get())
                             .setFrom(state.nodeId)
                             .setTo(request.getFrom())
                             .build();
-                }else{
+                } else {
                     appendEntriesReply = AppendEntriesReply.newBuilder()
                             .setSuccess(false)
                             .setTerm(state.currentTerm.get())
@@ -348,7 +344,7 @@ public class RaftRunner {
         public void setElectionTimeout(SetElectionTimeoutArgs request,
                                        StreamObserver<SetElectionTimeoutReply> responseObserver) {
             int time = request.getTimeout();
-            Variables.electionTimeout  = time;
+            Variables.electionTimeout = time;
             taskHolder.addElection();
         }
 
@@ -364,8 +360,8 @@ public class RaftRunner {
                                          StreamObserver<SetHeartBeatIntervalReply> responseObserver) {
             // TODO: Implement this!
             int time = request.getInterval();
-            Variables.heartBeatInterval  = time;
-            taskHolder.addElection();
+            Variables.heartBeatInterval = time;
+            taskHolder.addHeartBeat();
         }
 
         //NO NEED TO TOUCH THIS FUNCTION
@@ -386,27 +382,25 @@ public class RaftRunner {
             state.log.add(logEntry);
             return logEntry;
         }
-        public void waitUntilMajority(LogEntry logEntry,ProposeArgs request){
-          try{
-            Subject subject = Subject.getInstance(state.hostConnectionMap);
-            subject.appendEntry(logEntry,state,request);
-//                      request.wait();
-            //wait until most entry replicated on majority of servers
-          }catch (Exception e){
-            e.printStackTrace();
-          }
+
+        public void waitUntilMajority(LogEntry logEntry, ProposeArgs request) {
+
         }
 
         public Server getGrpcServer() {
             return this.server;
         }
-        public void becomeFollower(int term,int leaderId){
+
+        public boolean becomeFollower(int term, int leaderId) {
             taskHolder.addElection();
             taskHolder.stopHeartBeat();
-            if(state.getCurrentTerm().get()<=term){
+            if (state.getCurrentTerm().get() <term) {
                 state.setLeaderId(leaderId);
+                state.getCurrentTerm().set(term);
                 state.setRole(Raft.Role.Follower);
+                return true;
             }
+            return false;
         }
     }
 }
