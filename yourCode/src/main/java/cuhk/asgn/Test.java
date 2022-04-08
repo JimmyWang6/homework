@@ -3,7 +3,9 @@ package cuhk.asgn;
 import raft.Raft;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -14,12 +16,14 @@ import java.util.Map;
  **/
 public class Test {
     public static void main(String[] args) throws IOException, InterruptedException {
-        args = new String[]{"8888", "8888,9999", "1", "30", "30"};
+        args = new String[]{"8888", "2222,3333,4444,5555,6666,7777", "1", "10000", "10000"};
         String ports = args[1];
         int myport = Integer.parseInt(args[0]);
         int nodeID = Integer.parseInt(args[2]);
         int heartBeatInterval = Integer.parseInt(args[3]);
         int electionTimeout = Integer.parseInt(args[4]);
+        Variables.heartBeatInterval = heartBeatInterval;
+        Variables.electionTimeout = electionTimeout;
         String[] portStrings = ports.split(",");
 
         // A map where
@@ -29,17 +33,31 @@ public class Test {
         for (int x = 0; x < portStrings.length; x++) {
             hostmap.put(x, Integer.valueOf(portStrings[x]));
         }
-        RaftRunner.RaftNode node = RaftRunner.NewRaftNode(8888, hostmap, 0, heartBeatInterval, electionTimeout);
-        RaftRunner.RaftNode node1 = RaftRunner.NewRaftNode(9999, hostmap, 1, heartBeatInterval, electionTimeout);
-        Raft.ProposeArgs proposeArgs = Raft.ProposeArgs.newBuilder()
-                .setOp(Raft.Operation.Put)
-                .setKey("1")
-                .setV(0)
-                .build();
-        Thread.sleep(2000);
-        node.state.hostConnectionMap.get(9999).propose(proposeArgs);
-        System.out.println(node1.state);
-
-
+        RaftRunner.RaftNode node0 = RaftRunner.NewRaftNode(2222, hostmap, 0, heartBeatInterval, 1000);
+        RaftRunner.RaftNode node1 = RaftRunner.NewRaftNode(3333, hostmap, 1, heartBeatInterval, 2000);
+        RaftRunner.RaftNode node2 = RaftRunner.NewRaftNode(4444, hostmap, 2, heartBeatInterval, 3000);
+        RaftRunner.RaftNode node3 = RaftRunner.NewRaftNode(5555, hostmap, 3, heartBeatInterval, 1000);
+        RaftRunner.RaftNode node4 = RaftRunner.NewRaftNode(6666, hostmap, 4, heartBeatInterval, 2000);
+        RaftRunner.RaftNode node5 = RaftRunner.NewRaftNode(7777, hostmap, 5, heartBeatInterval, 3000);
+        List<RaftRunner.RaftNode> list = new ArrayList<>();
+        list.add(node1);
+        list.add(node0);
+        list.add(node3);
+        list.add(node4);
+        list.add(node5);
+        list.add(node2);
+        for(int i=0;i<4;i++){
+            Thread.sleep(10000);
+            RaftRunner.RaftNode raftNode = null;
+            for(int j=0;j<list.size();j++){
+                RaftRunner.RaftNode cur = list.get(j);
+                if(cur.state.getRole().equals(Raft.Role.Leader)){
+                    raftNode = cur;
+                    break;
+                }
+            }
+            raftNode.taskHolder.threadPoolExecutor.shutdown();
+            raftNode.server.shutdown();
+        }
     }
 }

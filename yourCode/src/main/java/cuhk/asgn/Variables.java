@@ -9,4 +9,6 @@ package cuhk.asgn;
 public class Variables {
     public static int VOTE_FOR_NOONE=-1;
     public static int NO_LEADER=-1;
+    public static int heartBeatInterval = 50;
+    public static int electionTimeout = 10000;
 }
