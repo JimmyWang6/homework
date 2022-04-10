@@ -33,7 +33,7 @@ public class ElectionTask implements Runnable{
     }
     @Override
     public void run() {
-        System.out.println("timeout"+Variables.electionTimeout);
+        System.out.println("node"+state.getNodeId()+"start election");
         if (state.getRole() == Raft.Role.Leader) {
             return;
         }
@@ -42,11 +42,9 @@ public class ElectionTask implements Runnable{
         long current = System.currentTimeMillis();
         pre = current;
         //start election
-        System.out.println("node"+state.getNodeId()+"start election");
-        ArrayList<Future<Raft.RequestVoteReply>> list = new ArrayList<>();
+        final ArrayList<Future<Raft.RequestVoteReply>> list = new ArrayList<>();
         for (Map.Entry<Integer, RaftNodeGrpc.RaftNodeBlockingStub> entry : state.getHostConnectionMap().entrySet()) {
             final int nodeId = entry.getKey();
-            System.out.println("nodeid"+nodeId);
             final RaftNodeGrpc.RaftNodeBlockingStub stub = entry.getValue();
             if (nodeId == state.getNodeId()) {
                 //not send to myself;
@@ -67,50 +65,56 @@ public class ElectionTask implements Runnable{
                         Raft.RequestVoteReply r = stub.requestVote(requestVoteArgs);
                         return r;
                     } catch (Exception e) {
-                        System.out.println("request vote fail");
                         return null;
                     }
                 }
             }));
         }
-        boolean termOutDate = false;
+        final boolean[] termOutDate = new boolean[1];
         int total = state.hostConnectionMap.size();
         //init to 1, vote for myself
-        AtomicInteger success = new AtomicInteger(1);
+        final AtomicInteger success = new AtomicInteger(1);
+        final AtomicInteger counter = new AtomicInteger(1);
         state.setVotedFor(state.getNodeId());
-        for (Future<Raft.RequestVoteReply> future : list) {
-            try {
-                Raft.RequestVoteReply r = future.get(100, TimeUnit.MILLISECONDS);
-                if (r == null) {
-                    //fail to get Reply
-                    continue;
-                }
-                if(r.getTerm()>state.getCurrentTerm().get()){
-                    //return
-                    termOutDate = true;
-                    state.getCurrentTerm().set(r.getTerm());
-                    state.setRole(Raft.Role.Follower);
-                    break;
-                }
-                if (r.getVoteGranted()) {
-                    success.getAndIncrement();
-                }
+        for (final Future<Raft.RequestVoteReply> future : list) {
+            threadPoolExecutor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Raft.RequestVoteReply r = future.get(100, TimeUnit.MILLISECONDS);
+                        if (r == null) {
+                            //fail to get Reply
+                        }
+                        if(r.getTerm()>state.getCurrentTerm().get()){
+                            //return
+                            termOutDate[0] = true;
+                            state.getCurrentTerm().set(r.getTerm());
+                            state.setRole(Raft.Role.Follower);
+                        }
+                        if (r.getVoteGranted()) {
+                            success.getAndIncrement();
+                        }
 
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+                    } catch (Exception e) {
+                        System.out.println("node:"+state.getNodeId()+"can't connect to a node");
+                    }finally {
+                        counter.getAndIncrement();
+                    }
+                }
+            });
         }
-        if(termOutDate){
+        while(counter.get()<total){
+
+        }
+        if(termOutDate[0]){
             return;
         }
-        System.out.println("get vote"+success.get());
         if (success.get() > total / 2) {
             //win the election
             System.out.println(state.getNodeId()+"become leader");
             state.setRole(Raft.Role.Leader);
             state.setLeaderId(state.getNodeId());
             raftNode.leaderInit();
-//            raftNode.leaderInit();
         }
     }
 }
