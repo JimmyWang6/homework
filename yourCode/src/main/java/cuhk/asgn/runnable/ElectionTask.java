@@ -65,8 +65,9 @@ public class ElectionTask implements Runnable{
                         Raft.RequestVoteReply r = stub.requestVote(requestVoteArgs);
                         return r;
                     } catch (Exception e) {
-                        return null;
+                        e.printStackTrace();
                     }
+                    return null;
                 }
             }));
         }
@@ -81,7 +82,7 @@ public class ElectionTask implements Runnable{
                 @Override
                 public void run() {
                     try {
-                        Raft.RequestVoteReply r = future.get(100, TimeUnit.MILLISECONDS);
+                        Raft.RequestVoteReply r = future.get(150, TimeUnit.MILLISECONDS);
                         if (r == null) {
                             //fail to get Reply
                         }
@@ -97,6 +98,7 @@ public class ElectionTask implements Runnable{
 
                     } catch (Exception e) {
                         System.out.println("node:"+state.getNodeId()+"can't connect to a node");
+                        e.printStackTrace();
                     }finally {
                         counter.getAndIncrement();
                     }

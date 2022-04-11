@@ -36,6 +36,7 @@ public class AppendEntryTask implements Callable {
                 preLogTerm = state.getLog().get(pre).getTerm();
             }
             Raft.AppendEntriesArgs.Builder builder = Raft.AppendEntriesArgs.newBuilder();
+            System.out.println(nodeId+"cur next=="+next);
             for(int i=next-1;i<state.getLog().size();i++){
                 builder.addEntries(state.getLog().get(i));
             }

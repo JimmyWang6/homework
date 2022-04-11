@@ -94,6 +94,8 @@ public class HeartBeatTask implements Runnable {
             }));
         }
         final AtomicInteger atomicInteger = new AtomicInteger(1);
+        final int curCommitId = state.getCommitIndex().get();
+        final AtomicInteger refreshVote = new AtomicInteger(1);
         for (int i = 0; i < list.size(); i++) {
             final Future<Raft.AppendEntriesReply> future = list.get(i);
             threadPool.execute(new Runnable() {
@@ -101,13 +103,17 @@ public class HeartBeatTask implements Runnable {
                 public void run() {
                     try {
                         Raft.AppendEntriesReply r = future.get(100, TimeUnit.MILLISECONDS);
-                        if (r.getTerm() > state.getCurrentTerm().get()) {
+                        if (r.getTerm() >state.getCurrentTerm().get()) {
                             //become follower
                             //avoid split brain problem
                             state.getCurrentTerm().set(r.getTerm());
                             state.setVotedFor(Variables.VOTE_FOR_NOONE);
                             state.setRole(Raft.Role.Follower);
-                            state.getMatchIndex()[r.getFrom()] = r.getMatchIndex();
+                        }
+                        state.getMatchIndex()[r.getFrom()] = r.getMatchIndex();
+                        state.getNextIndex()[r.getFrom()] = r.getMatchIndex()+1;
+                        if(r.getMatchIndex()>=state.getCommitIndex().get()){
+                            refreshVote.getAndIncrement();
                         }
                         hashMap.remove(r.getFrom());
                     } catch (Exception e) {
@@ -121,6 +127,13 @@ public class HeartBeatTask implements Runnable {
         while(atomicInteger.get()<state.getHostConnectionMap().size()){
 
         }
+        taskHolder.returnCheck();
+//        if(waiter.couldReturn()){
+//            System.out.println("leader here commit");
+//            int pre = state.getCommitIndex().get();
+//            int cur = state.getCommitIndex().getAndIncrement();
+//            taskHolder.raftNode.leaderRefresh(pre,cur);
+//        }
         taskHolder.returnCheck();
 
     }
