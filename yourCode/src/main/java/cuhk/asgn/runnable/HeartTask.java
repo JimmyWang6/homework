@@ -75,7 +75,7 @@ public class HeartTask implements Runnable {
             }
             state.getMatchIndex()[r.getFrom()] = r.getMatchIndex();
             state.getNextIndex()[r.getFrom()] = r.getMatchIndex() + 1;
-            taskHolder.resetBeat(r.getFrom());
+//            taskHolder.resetBeat(r.getFrom());
             taskHolder.returnCheck();
         }catch (Exception e){
             e.printStackTrace();

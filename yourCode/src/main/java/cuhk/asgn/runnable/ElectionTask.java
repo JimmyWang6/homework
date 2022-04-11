@@ -82,7 +82,7 @@ public class ElectionTask implements Runnable{
                 @Override
                 public void run() {
                     try {
-                        Raft.RequestVoteReply r = future.get(150, TimeUnit.MILLISECONDS);
+                        Raft.RequestVoteReply r = future.get(200, TimeUnit.MILLISECONDS);
                         if (r == null) {
                             //fail to get Reply
                         }

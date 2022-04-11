@@ -215,19 +215,24 @@ public class RaftRunner {
         @Override
         public void getValue(GetValueArgs request, StreamObserver<GetValueReply> responseObserver) {
             // TODO: Implement this!
-            System.out.println("node" + state.nodeId + "receive get value");
-            String key = request.getKey();
-            System.out.println("key==" + key);
-            GetValueReply reply;
-            if (concurrentHashMap.get(key) != null) {
-                System.out.println("key found");
-                reply = GetValueReply.newBuilder().setV(concurrentHashMap.get(key)).setStatus(Raft.Status.KeyFound).build();
-            } else {
-                reply = GetValueReply.newBuilder().setStatus(Raft.Status.KeyNotFound).build();
+            try{
+                System.out.println("node" + state.nodeId + "receive get value");
+                String key = request.getKey();
+                System.out.println("key==" + key);
+                GetValueReply reply;
+                if (concurrentHashMap.get(key) != null) {
+                    System.out.println("key found");
+                    reply = GetValueReply.newBuilder().setV(concurrentHashMap.get(key)).setStatus(Raft.Status.KeyFound).build();
+                } else {
+                    reply = GetValueReply.newBuilder().setStatus(Raft.Status.KeyNotFound).build();
+                }
+                System.out.println("node" + state.nodeId + "return" + reply.getStatus());
+                responseObserver.onNext(reply);
+                responseObserver.onCompleted();
+            }catch (Exception e){
+                System.out.println("here an exception");
+                e.printStackTrace();
             }
-            System.out.println("node" + state.nodeId + "return" + reply.getStatus());
-            responseObserver.onNext(reply);
-            responseObserver.onCompleted();
         }
 
         // Desc:if(request.getTerm()>)
@@ -432,7 +437,7 @@ public class RaftRunner {
             System.out.println("change heartbeart interval");
             int time = request.getInterval();
             Variables.heartBeatInterval = time;
-            taskHolder.addHeartBeatWithDelay();
+//            taskHolder.addHeartBeatWithDelay();
         }
 
         //NO NEED TO TOUCH THIS FUNCTION

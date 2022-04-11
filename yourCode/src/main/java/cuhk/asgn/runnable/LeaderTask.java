@@ -54,14 +54,15 @@ public class LeaderTask implements Runnable {
                     @Override
                     public void run() {
                         try{
-                            Raft.AppendEntriesReply r =future.get(90, TimeUnit.MILLISECONDS);
+                            Raft.AppendEntriesReply r =future.get(100, TimeUnit.MILLISECONDS);
                             //return successfully
                             System.out.println("could get reply");
                             state.getMatchIndex()[r.getFrom()] = r.getMatchIndex();
                             state.getNextIndex()[r.getFrom()] = r.getMatchIndex()+1;
 //                continueTask(r);
                             successReturn.add(r.getFrom());
-                            holder.resetBeat(r.getFrom());
+                            taskHolder.returnCheck();
+//                            holder.resetBeat(r.getFrom());
                         }catch (Exception e){
                             e.printStackTrace();
                         }finally {
@@ -70,12 +71,12 @@ public class LeaderTask implements Runnable {
                     }
                 });
             }
-            while(atomicInteger.get()<state.getHostConnectionMap().size()){
-
-            }
-            System.out.println("successReturn size");
-            System.out.println(successReturn.size());
-            taskHolder.returnCheck();
+//            while(atomicInteger.get()<state.getHostConnectionMap().size()){
+//
+//            }
+//            System.out.println("successReturn size");
+//            System.out.println(successReturn.size());
+//            taskHolder.returnCheck();
         }catch (Exception e){
             e.printStackTrace();
         }

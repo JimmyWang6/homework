@@ -93,9 +93,9 @@ public class HeartBeatTask implements Runnable {
                 }
             }));
         }
-        final AtomicInteger atomicInteger = new AtomicInteger(1);
-        final int curCommitId = state.getCommitIndex().get();
-        final AtomicInteger refreshVote = new AtomicInteger(1);
+//        final AtomicInteger atomicInteger = new AtomicInteger(1);
+//        final int curCommitId = state.getCommitIndex().get();
+//        final AtomicInteger refreshVote = new AtomicInteger(1);
         for (int i = 0; i < list.size(); i++) {
             final Future<Raft.AppendEntriesReply> future = list.get(i);
             threadPool.execute(new Runnable() {
@@ -112,22 +112,19 @@ public class HeartBeatTask implements Runnable {
                         }
                         state.getMatchIndex()[r.getFrom()] = r.getMatchIndex();
                         state.getNextIndex()[r.getFrom()] = r.getMatchIndex()+1;
-                        if(r.getMatchIndex()>=state.getCommitIndex().get()){
-                            refreshVote.getAndIncrement();
-                        }
-                        hashMap.remove(r.getFrom());
+                        taskHolder.returnCheck();
+//                        hashMap.remove(r.getFrom());
                     } catch (Exception e) {
                         //timeout
                     }finally {
-                        atomicInteger.getAndIncrement();
+//                        atomicInteger.getAndIncrement();
                     }
                 }
             });
         }
-        while(atomicInteger.get()<state.getHostConnectionMap().size()){
-
-        }
-        taskHolder.returnCheck();
+//        while(atomicInteger.get()<state.getHostConnectionMap().size()){
+//
+//        }
 //        if(waiter.couldReturn()){
 //            System.out.println("leader here commit");
 //            int pre = state.getCommitIndex().get();
