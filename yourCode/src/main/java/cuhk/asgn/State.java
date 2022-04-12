@@ -28,7 +28,7 @@ public class State {
     int [] nextIndex;
     int [] matchIndex;
     //Thread safe List
-    CopyOnWriteArrayList<Raft.LogEntry> log;
+    public volatile CopyOnWriteArrayList<Raft.LogEntry> log;
     public State(){
         hostConnectionMap = new HashMap<>();
         //currentTerm init to zero

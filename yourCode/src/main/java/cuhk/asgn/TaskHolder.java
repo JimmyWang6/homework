@@ -14,8 +14,8 @@ import java.util.concurrent.*;
  * @create: 2022-04-07 18:48
  **/
 public class TaskHolder {
-    ScheduledThreadPoolExecutor threadPoolExecutor = new ScheduledThreadPoolExecutor(5);
-    ThreadPoolExecutor executor = new ThreadPoolExecutor(16, 30, 1, TimeUnit.MINUTES,
+    public ScheduledThreadPoolExecutor threadPoolExecutor = new ScheduledThreadPoolExecutor(5);
+    public ThreadPoolExecutor executor = new ThreadPoolExecutor(16, 30, 1, TimeUnit.MINUTES,
             new ArrayBlockingQueue(30), new ThreadPoolExecutor.AbortPolicy());
     public ElectionTask electionTask;
     public HeartBeatTask heartBeatTask;
@@ -45,21 +45,26 @@ public class TaskHolder {
         electionFuture = threadPoolExecutor.scheduleAtFixedRate(electionTask, Variables.electionTimeout, Variables.electionTimeout, TimeUnit.MILLISECONDS);
     }
 
-    public Waiter leaderTask() {
-        Waiter waiter = new Waiter(state.getCommitIndex().get(), state);
-        Runnable runnable = new LeaderTask(state, executor, this);
-        executor.submit(runnable);
-        System.out.println("submit leader work");
-        try {
+    public Runnable leaderTask() {
+        final TaskHolder taskHolder =this;
+        Runnable runnable = new Runnable() {
+            @Override
+            public void run() {
+                Runnable runnable = new LeaderTask(state, executor, taskHolder);
+                executor.submit(runnable);
+                System.out.println("submit leader work");
+                try {
 //            set = future.get(150,TimeUnit.MILLISECONDS);
 //            success = state.getHostConnectionMap().size() - remainTask.size()-1;
 //            this.addHeartBeatWithDelay();
-        } catch (Exception e) {
-            System.out.println("there is an append entry fail");
-            e.printStackTrace();
-        }
-        this.returnCheck();
-        return waiter;
+                } catch (Exception e) {
+                    System.out.println("there is an append entry fail");
+                    e.printStackTrace();
+                }
+                returnCheck();
+            }
+        };
+        return runnable;
     }
 
     public void addHeartBeat() {
@@ -80,9 +85,10 @@ public class TaskHolder {
             if (state.getNodeId() == i) {
                 continue;
             }
-            Future future = threadPoolExecutor.scheduleAtFixedRate(
-                    new HeartTask(state, i, this), 0, Variables.heartBeatInterval + 200, TimeUnit.MILLISECONDS);
-            heartBeatMap.put(i, (ScheduledFuture) future);
+            HeartTask heartTask = new HeartTask(state, i, this);
+            System.out.println("add heartbeat:"+i);
+            threadPoolExecutor.scheduleAtFixedRate(
+                    heartTask, 0, Variables.heartBeatInterval, TimeUnit.MILLISECONDS);
         }
     }
 
@@ -138,20 +144,14 @@ public class TaskHolder {
         electionFuture = null;
     }
 
-    public boolean waitUntilMajority(Raft.LogEntry logEntry, Raft.ProposeArgs request) throws InterruptedException {
-        Waiter waiter = this.leaderTask();
-        if (waiter.couldReturn()) {
-            return true;
+    public boolean waitUntilMajority(int cur) {
+        while(true){
+            if(state.getCommitIndex().get()>cur){
+                break;
+            }
         }
-        waiterList.add(waiter);
-        System.out.println("waiter size");
-        System.out.println(waiterList.size());
-        return false;
-//        synchronized (waiter){
-//            //wait to notify
-//            System.out.println("wait here until next reply");
-//            waiter.wait();
-//        }
+        System.out.println("comeback");
+        return true;
     }
 
     public boolean waiterCheck(Waiter waiter) {

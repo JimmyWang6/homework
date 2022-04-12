@@ -122,16 +122,6 @@ public class HeartBeatTask implements Runnable {
                 }
             });
         }
-//        while(atomicInteger.get()<state.getHostConnectionMap().size()){
-//
-//        }
-//        if(waiter.couldReturn()){
-//            System.out.println("leader here commit");
-//            int pre = state.getCommitIndex().get();
-//            int cur = state.getCommitIndex().getAndIncrement();
-//            taskHolder.raftNode.leaderRefresh(pre,cur);
-//        }
-        taskHolder.returnCheck();
 
     }
 }

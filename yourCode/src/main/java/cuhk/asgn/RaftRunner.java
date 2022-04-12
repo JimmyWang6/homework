@@ -15,6 +15,7 @@ import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 
 import raft.Raft;
 import raft.Raft.AppendEntriesArgs;
@@ -98,6 +99,8 @@ public class RaftRunner {
             Channel channel = ManagedChannelBuilder.forAddress("127.0.0.1", id)
                     .usePlaintext() // disable TLS
                     .build();
+            RaftNodeBlockingStub raftNodeBlockingStub = RaftNodeGrpc.newBlockingStub(channel);
+            raftNodeBlockingStub.withDeadlineAfter(100,TimeUnit.MICROSECONDS);
             hostConnectionMap.put(
                     entry.getKey(),
                     RaftNodeGrpc.newBlockingStub(channel)
@@ -126,13 +129,15 @@ public class RaftRunner {
             int size = state.hostConnectionMap.size();
             state.nextIndex = new int[size];
             state.matchIndex = new int[size];
-            taskHolder.stopElection();
-            taskHolder.addHeartBeat();
+
             int curIndex = state.log.size() + 1;
             for (int i = 0; i < size; i++) {
                 state.nextIndex[i] = curIndex;
                 state.matchIndex[i] = 0;
             }
+            taskHolder.stopElection();
+            taskHolder.addHeartBeat();
+//            taskHolder.threadPoolExecutor.scheduleAtFixedRate(taskHolder.leaderTask(),0,Variables.heartBeatInterval, TimeUnit.MILLISECONDS);
             //
         }
 
@@ -170,32 +175,21 @@ public class RaftRunner {
                     break;
                 case Put:
                     System.out.println("receive put");
-                    concurrentHashMap.put(key, value);
+//                    concurrentHashMap.put(key, value);
                     LogEntry logEntry = appendLocalEntry(request);
-                    try {
-                        if (taskHolder.waitUntilMajority(logEntry, request)) {
-                            leaderRefresh();
-                        }
-                        ;
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
-                    }
-//                    state.commitIndex.getAndIncrement();
+                    taskHolder.waitUntilMajority(state.getCommitIndex().get());
+//                    taskHolder.leaderTask();
                     reply = ProposeReply.newBuilder().setStatus(Raft.Status.OK).setCurrentLeader(state.getLeaderId()).build();
                     break;
                 case Delete:
                     System.out.println("receive delete");
+                    appendLocalEntry(request);
+                    taskHolder.waitUntilMajority(state.getCommitIndex().get());
                     if (concurrentHashMap.get(key) == null) {
                         reply = ProposeReply.newBuilder().setCurrentLeader(state.getLeaderId()).setStatus(Raft.Status.KeyNotFound).build();
                     } else {
-                        logEntry = appendLocalEntry(request);
-                        try {
-                            if (taskHolder.waitUntilMajority(logEntry, request)) {
-                                leaderRefresh();
-                            }
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
+//                        concurrentHashMap.remove(key);
+//                        taskHolder.leaderTask();
                         reply = ProposeReply.newBuilder().setStatus(Raft.Status.OK).setCurrentLeader(state.getLeaderId()).build();
                     }
                     break;
@@ -303,9 +297,6 @@ public class RaftRunner {
                 responseObserver.onCompleted();
                 return;
             }
-            if (request.getLeaderCommit() > state.commitIndex.get()) {
-                state.commitIndex.set(Math.min(request.getLeaderCommit(), state.log.size()));
-            }
             AppendEntriesReply appendEntriesReply = null;
             boolean success = true;
             System.out.println("got here");
@@ -382,29 +373,37 @@ public class RaftRunner {
         }
 
         public void refresh(int leaderCommit) {
-            System.out.println("refresh");
-            System.out.println("leader" + leaderCommit + "cur" + state.getCommitIndex());
-            System.out.println("log size" + state.getLog().size());
-            if (state.getLog().size() == 0) {
-                return;
-            }
-            int cur = state.commitIndex.get();
-            for (int i = cur; i < leaderCommit; i++) {
-                LogEntry logEntry = state.getLog().get(i);
-                int op = logEntry.getOpValue();
-                System.out.println("op==" + op);
-                switch (op) {
-                    case 0:
-                        //put
-                        this.concurrentHashMap.put(logEntry.getKey(), logEntry.getValue());
-                        break;
-                    case 1:
-                        System.out.println("commit delete in slave");
-                        this.concurrentHashMap.remove(logEntry.getKey());
-                        break;
+            try{
+                System.out.println(state.getNodeId()+"refresh");
+                System.out.println("leader" + leaderCommit + "cur" + state.getCommitIndex());
+                System.out.println("log size" + state.getLog().size());
+                if (state.getLog().size() == 0) {
+                    System.out.println("size==0");
+                    return;
                 }
+                int cur = state.commitIndex.get();
+                for (int i = cur; i < leaderCommit; i++) {
+                    LogEntry logEntry = state.getLog().get(i);
+                    int op = logEntry.getOpValue();
+                    System.out.println("op==" + op);
+                    switch (op) {
+                        case 0:
+                            //put
+                            System.out.println("commit put in slave");
+                            this.concurrentHashMap.put(logEntry.getKey(), logEntry.getValue());
+                            break;
+                        case 1:
+                            System.out.println("commit delete in slave");
+                            this.concurrentHashMap.remove(logEntry.getKey());
+                            break;
+                    }
+                }
+                if (leaderCommit > state.commitIndex.get()) {
+                    state.commitIndex.set(Math.min(leaderCommit, state.log.size()));
+                }
+            }catch (Exception e){
+                e.printStackTrace();
             }
-            state.commitIndex.set(leaderCommit);
         }
 
         // Desc:
@@ -447,6 +446,8 @@ public class RaftRunner {
         }
 
         public LogEntry appendLocalEntry(ProposeArgs request) {
+            System.out.println("append entry");
+            System.out.println("cur log size"+state.getLog().size());
             LogEntry logEntry = LogEntry.newBuilder().setOp(request.getOp())
                     .setOpValue(request.getOpValue())
                     .setValue(request.getV())

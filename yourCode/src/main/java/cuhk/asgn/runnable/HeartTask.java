@@ -7,6 +7,7 @@ import raft.Raft;
 import raft.RaftNodeGrpc;
 
 import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
 
 /**
  * @program: asgn
@@ -31,56 +32,40 @@ public class HeartTask implements Runnable {
             int pre = state.getMatchIndex()[nodeId];
             int preLogTerm;
             if (pre == 0) {
-                //not send any log
                 preLogTerm = 0;
             } else {
                 preLogTerm = state.getLog().get(pre-1).getTerm();
             }
             Raft.AppendEntriesArgs.Builder builder = Raft.AppendEntriesArgs.newBuilder();
             System.out.println("here heartbeat start");
-            if (state.getLog().size() == 0) {
+            System.out.println("cur leadrLog size"+state.getLog().size());
+            if(state.getLog().size()==0){
 
-            } else {
-                for (int i = next - 1; i < state.getLog().size(); i++) {
+            }else{
+                System.out.println("next=="+next);
+                for(int i=next-1;i<state.getLog().size();i++){
                     builder.addEntries(state.getLog().get(i));
                 }
             }
-            Raft.AppendEntriesArgs appendEntriesArgs = builder
-                    .setTo(nodeId)
-                    .setFrom(state.getNodeId())
-                    .setTerm(state.getCurrentTerm().get())
-                    .setLeaderId(state.getNodeId())
-                    .setPrevLogTerm(preLogTerm)
-                    .setLeaderCommit(state.getCommitIndex().get())
-                    .setPrevLogIndex(pre)
-                    .build();
-            Raft.AppendEntriesReply r = null;
             System.out.println("prepare now");
             try {
-                r = state.hostConnectionMap.get(nodeId).appendEntries(appendEntriesArgs);
-                System.out.println("here get reply from" + r.getFrom());
+                AppendEntryTask appendEntryTask = new AppendEntryTask(state, taskHolder.executor,nodeId,taskHolder);
+                taskHolder.executor.submit(appendEntryTask);
+//                state.getMatchIndex()[r.getFrom()] = r.getMatchIndex();
+//                state.getNextIndex()[r.getFrom()] = r.getMatchIndex()+1;
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            if(r==null){
-                System.out.println("can't get heartbeat reply");
-                return;
-            }
-            if (r.getTerm() > state.getCurrentTerm().get()) {
-                //become follower
-                //avoid split brain problem
-                state.getCurrentTerm().set(r.getTerm());
-                state.setVotedFor(Variables.VOTE_FOR_NOONE);
-                state.setRole(Raft.Role.Follower);
-            }
-            state.getMatchIndex()[r.getFrom()] = r.getMatchIndex();
-            state.getNextIndex()[r.getFrom()] = r.getMatchIndex() + 1;
-//            taskHolder.resetBeat(r.getFrom());
-            taskHolder.returnCheck();
+//            if (r.getTerm() > state.getCurrentTerm().get()) {
+//                //become follower
+//                //avoid split brain problem
+//                state.getCurrentTerm().set(r.getTerm());
+//                state.setVotedFor(Variables.VOTE_FOR_NOONE);
+//                state.setRole(Raft.Role.Follower);
+//            }
         }catch (Exception e){
             e.printStackTrace();
         }
-
     }
 
 

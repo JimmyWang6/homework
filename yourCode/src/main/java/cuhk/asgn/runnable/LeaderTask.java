@@ -40,9 +40,9 @@ public class LeaderTask implements Runnable {
                     //not send to myself;
                     continue;
                 }
-                AppendEntryTask appendEntryTask = new AppendEntryTask(state, threadPool,nodeId);
-                Future<Raft.AppendEntriesReply> future = threadPool.submit(appendEntryTask);
-                list.add(future);
+                AppendEntryTask appendEntryTask = new AppendEntryTask(state, threadPool,nodeId,taskHolder);
+//                Future<Raft.AppendEntriesReply> future = threadPool.submit(appendEntryTask);
+//                list.add(future);
             }
             int size = list.size();
             final Set<Integer> successReturn = new HashSet<>();
@@ -57,6 +57,7 @@ public class LeaderTask implements Runnable {
                             Raft.AppendEntriesReply r =future.get(100, TimeUnit.MILLISECONDS);
                             //return successfully
                             System.out.println("could get reply");
+//                            taskHolder.resetBeat(r.getFrom());
                             state.getMatchIndex()[r.getFrom()] = r.getMatchIndex();
                             state.getNextIndex()[r.getFrom()] = r.getMatchIndex()+1;
 //                continueTask(r);
@@ -70,6 +71,7 @@ public class LeaderTask implements Runnable {
                         }
                     }
                 });
+//                taskHolder.addHeartBeat();
             }
 //            while(atomicInteger.get()<state.getHostConnectionMap().size()){
 //
