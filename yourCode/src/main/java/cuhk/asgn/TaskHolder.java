@@ -150,7 +150,7 @@ public class TaskHolder {
                 break;
             }
         }
-        System.out.println("comeback");
+        returnCheck();
         return true;
     }
 
@@ -189,14 +189,6 @@ public class TaskHolder {
             state.getCommitIndex().getAndIncrement();
             raftNode.leaderRefresh();
         }
-//        Iterator<Waiter> iterator = waiterList.iterator();
-//        while (iterator.hasNext()) {
-//            Waiter waiter = iterator.next();
-//            if(waiterCheck(waiter)){
-//                iterator.remove();
-//            }
-//
-//        }
     }
 
 }

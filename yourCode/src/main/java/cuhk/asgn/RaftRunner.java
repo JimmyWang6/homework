@@ -120,7 +120,6 @@ public class RaftRunner {
         public volatile State state;
         public TaskHolder taskHolder;
         ConcurrentHashMap<String, Integer> concurrentHashMap = new ConcurrentHashMap();
-
         public RaftNode() {
             this.state = new State();
         }
