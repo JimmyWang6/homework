@@ -100,7 +100,7 @@ public class RaftRunner {
                     .usePlaintext() // disable TLS
                     .build();
             RaftNodeBlockingStub raftNodeBlockingStub = RaftNodeGrpc.newBlockingStub(channel);
-            raftNodeBlockingStub.withDeadlineAfter(100,TimeUnit.MICROSECONDS);
+            raftNodeBlockingStub.withDeadlineAfter(100, TimeUnit.MICROSECONDS);
             hostConnectionMap.put(
                     entry.getKey(),
                     RaftNodeGrpc.newBlockingStub(channel)
@@ -209,7 +209,7 @@ public class RaftRunner {
         @Override
         public void getValue(GetValueArgs request, StreamObserver<GetValueReply> responseObserver) {
             // TODO: Implement this!
-            try{
+            try {
                 System.out.println("node" + state.nodeId + "receive get value");
                 String key = request.getKey();
                 System.out.println("key==" + key);
@@ -223,7 +223,7 @@ public class RaftRunner {
                 System.out.println("node" + state.nodeId + "return" + reply.getStatus());
                 responseObserver.onNext(reply);
                 responseObserver.onCompleted();
-            }catch (Exception e){
+            } catch (Exception e) {
                 System.out.println("here an exception");
                 e.printStackTrace();
             }
@@ -305,26 +305,20 @@ public class RaftRunner {
             } else {
                 int preIndex = request.getPrevLogIndex();
                 if (preIndex == 0) {
-                    CopyOnWriteArrayList<LogEntry> list = state.getLog();
-                    for (Raft.LogEntry e : request.getEntriesList()) {
-                        list.add(e);
-                    }
+                    CopyOnWriteArrayList<LogEntry> list = state.log;
+                    compareAndAddLog(request);
                     success = true;
                 } else if (preIndex > state.log.size()) {
                     success = false;
                 } else {
-                    System.out.println("gogogogogogoogogogogogogogo");
                     LogEntry entry = state.log.get(preIndex - 1);
                     int term = entry.getTerm();
                     if (term != request.getTerm()) {
                         System.out.println("go success false");
                         success = false;
                     } else {
-                        CopyOnWriteArrayList<LogEntry> list = state.getLog();
                         System.out.println("go add entries");
-                        for (Raft.LogEntry e : request.getEntriesList()) {
-                            list.add(e);
-                        }
+                        compareAndAddLog(request);
                         success = true;
                     }
                 }
@@ -352,11 +346,26 @@ public class RaftRunner {
             responseObserver.onCompleted();
         }
 
-        public void leaderRefresh() {
-            if(state.getCommitIndex().get()==0){
+        public void compareAndAddLog(AppendEntriesArgs request) {
+            int preIndex = request.getPrevLogIndex();
+            int localIndex = state.log.size();
+            if (state.log.size() == 0||preIndex==localIndex){
+                for (Raft.LogEntry e : request.getEntriesList()) {
+                    state.log.add(e);
+                }
                 return;
             }
-            LogEntry logEntry = state.getLog().get(state.getCommitIndex().get()-1);
+            int addSize = request.getEntriesList().size();
+            for (int i = preIndex + localIndex; i < addSize; i++) {
+                state.log.add(request.getEntries(i - 1));
+            }
+        }
+
+        public void leaderRefresh() {
+            if (state.getCommitIndex().get() == 0) {
+                return;
+            }
+            LogEntry logEntry = state.getLog().get(state.getCommitIndex().get() - 1);
             int op = logEntry.getOpValue();
             System.out.println("op==" + op);
             switch (op) {
@@ -373,8 +382,8 @@ public class RaftRunner {
         }
 
         public void refresh(int leaderCommit) {
-            try{
-                System.out.println(state.getNodeId()+"refresh");
+            try {
+                System.out.println(state.getNodeId() + "refresh");
                 System.out.println("leader" + leaderCommit + "cur" + state.getCommitIndex());
                 System.out.println("log size" + state.getLog().size());
                 if (state.getLog().size() == 0) {
@@ -401,7 +410,7 @@ public class RaftRunner {
                 if (leaderCommit > state.commitIndex.get()) {
                     state.commitIndex.set(Math.min(leaderCommit, state.log.size()));
                 }
-            }catch (Exception e){
+            } catch (Exception e) {
                 e.printStackTrace();
             }
         }
@@ -419,7 +428,7 @@ public class RaftRunner {
             int time = request.getTimeout();
             Variables.electionTimeout = time;
             taskHolder.addElection();
-            System.out.println("electionTimeOut="+time);
+            System.out.println("electionTimeOut=" + time);
         }
 
         // Desc:
@@ -447,7 +456,7 @@ public class RaftRunner {
 
         public LogEntry appendLocalEntry(ProposeArgs request) {
             System.out.println("append entry");
-            System.out.println("cur log size"+state.getLog().size());
+            System.out.println("cur log size" + state.getLog().size());
             LogEntry logEntry = LogEntry.newBuilder().setOp(request.getOp())
                     .setOpValue(request.getOpValue())
                     .setValue(request.getV())
